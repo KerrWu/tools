@@ -12,6 +12,11 @@ import sys
 import cv2
 import os
 from keras.models import Model
+
+
+inputSize = (224,224)
+classNum = 1000
+
 def target_category_loss(x, category_index, nb_classes):
     return tf.multiply(x, K.one_hot([category_index], nb_classes))
  
@@ -23,8 +28,9 @@ def normalize(x):
     return x / (K.sqrt(K.mean(K.square(x))) + 1e-5)
  
 def load_image(path):
-    img_path = sys.argv[1]
-    img = image.load_img(img_path, target_size=(224, 224))
+    #img_path = sys.argv[1]
+    img_path = path
+    img = image.load_img(img_path, target_size=inputSize)
     x = image.img_to_array(img)
     x = np.expand_dims(x, axis=0)
     x = preprocess_input(x)
@@ -85,13 +91,15 @@ def deprocess_image(x):
         x = x.transpose((1, 2, 0))
     x = np.clip(x, 0, 255).astype('uint8')
     return x
+
+
 def _compute_gradients(tensor, var_list):
   grads = tf.gradients(tensor, var_list)
   return [grad if grad is not None else tf.zeros_like(var)
           for var, grad in zip(var_list, grads)]
  
 def grad_cam(input_model, image, category_index, layer_name):
-    nb_classes = 1000
+    nb_classes = classNum
     target_layer = lambda x: target_category_loss(x, category_index, nb_classes)
     x = Lambda(target_layer, output_shape = target_category_loss_output_shape)(input_model.output)
     model = Model(inputs=input_model.input, outputs=x)
@@ -109,16 +117,29 @@ def grad_cam(input_model, image, category_index, layer_name):
  
     for i, w in enumerate(weights):
         cam += w * output[:, :, i]
- 
-    cam = cv2.resize(cam, (224, 224))
+    print('cam shape = {0}'.format(cam.shape))
+    cam = cv2.resize(cam, inputSize)
     cam = np.maximum(cam, 0)
     heatmap = cam / np.max(cam)
+
  
     #Return to BGR [0..255] from the preprocessed image
     image = image[0, :]
     image -= np.min(image)
     image = np.minimum(image, 255)
- 
+
+
+    # 增强对比度，更好的可视化效果
+    # newHeatmap = np.uint8(255*heatmap)
+    # print(newHeatmap.shape)
+    # for i in range(len(newHeatmap)):
+    #     for j in range(len(newHeatmap[i])):
+    #         if newHeatmap[i][j]>120:
+    #             newHeatmap[i][j] = np.minimum(newHeatmap[i][j]+50, 255)
+    #         elif j<120:
+    #             newHeatmap[i][j] = np.maximum(newHeatmap[i][j]-50, 0)
+    # cam = cv2.applyColorMap(newHeatmap, cv2.COLORMAP_JET)
+
     cam = cv2.applyColorMap(np.uint8(255*heatmap), cv2.COLORMAP_JET)
     cam = np.float32(cam) + np.float32(image)
     cam = 255 * cam / np.max(cam)
@@ -152,10 +173,15 @@ def grad_cam(input_model, image, category_index, layer_name):
     cam = np.float32(cam) + np.float32(image)
     cam = 255 * cam / np.max(cam)
     return np.uint8(cam), heatmap """
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-preprocessed_input = load_image(sys.argv[1])
- 
+
+#os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+imgPath = "/Users/liuyouru/Desktop/PytorchTemplate/data/train/car/000000000001.jpg"
+#preprocessed_input = load_image(sys.argv[1])
+preprocessed_input = load_image(imgPath)
+print("image loaded")
+
 model = VGG16(weights='imagenet')
+print("model loaded")
  
 predictions = model.predict(preprocessed_input)
 top_1 = decode_predictions(predictions)[0][0]
@@ -164,11 +190,12 @@ print('%s (%s) with probability %.2f' % (top_1[1], top_1[0], top_1[2]))
  
 predicted_class = np.argmax(predictions)
 cam, heatmap = grad_cam(model, preprocessed_input, predicted_class, "block5_conv3")
-cv2.imwrite("gradcam.jpg", cam)
+cv2.imwrite("/Users/liuyouru/Desktop/myGit/tools/example/gradcam.jpg", cam)
+cv2.imwrite("/Users/liuyouru/Desktop/myGit/tools/example/heatmap.jpg",255*heatmap)
  
 register_gradient()
 guided_model = modify_backprop(model, 'GuidedBackProp')
 saliency_fn = compile_saliency_function(guided_model)
 saliency = saliency_fn([preprocessed_input, 0])
 gradcam = saliency[0] * heatmap[..., np.newaxis]
-cv2.imwrite("guided_gradcam.jpg", deprocess_image(gradcam))
+cv2.imwrite("/Users/liuyouru/Desktop/myGit/tools/example/guided_gradcam.jpg", deprocess_image(gradcam))
