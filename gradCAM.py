@@ -172,8 +172,3 @@ saliency_fn = compile_saliency_function(guided_model)
 saliency = saliency_fn([preprocessed_input, 0])
 gradcam = saliency[0] * heatmap[..., np.newaxis]
 cv2.imwrite("guided_gradcam.jpg", deprocess_image(gradcam))
---------------------- 
-作者：qq_32799915 
-来源：CSDN 
-原文：https://blog.csdn.net/qq_32799915/article/details/83503464 
-版权声明：本文为博主原创文章，转载请附上博文链接！
